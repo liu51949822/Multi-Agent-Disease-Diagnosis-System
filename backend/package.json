@@ -1,0 +1,43 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Multi-agent plastic surgery consultation backend (LangGraph.js + Express + Gemini)",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx src/index.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "ingest": "npx tsx scripts/ingest.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "1.1.28",
+    "@langchain/core": "^1.0.3",
+    "@langchain/google-genai": "^1.0.0",
+    "@langchain/langgraph": "^1.0.1",
+    "@types/express": "^4.17.25",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "pg": "8.22.0",
+    "pino": "10.3.1",
+    "tsx": "^4.20.6",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/node": "^24.10.0",
+    "@vitest/coverage-v8": "4.1.6",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.6"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
