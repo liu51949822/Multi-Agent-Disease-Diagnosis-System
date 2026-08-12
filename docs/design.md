@@ -4,7 +4,7 @@
 
 ## 1. Overview
 
-A multi-agent AI consultation system for plastic surgery and aesthetic medicine. Inspired by the open-source reference project `js0205/langgraph-project`, this system re-targets the domain from general medicine/medication to **plastic surgery and aesthetics**, and adds a **photo (vision) analysis** path using Google Gemini's multimodal capabilities.
+A multi-agent AI consultation system for plastic surgery and aesthetic medicine. The system re-targets the domain from general medicine/medication to **plastic surgery and aesthetics**, and adds a **photo (vision) analysis** path using Google Gemini's multimodal capabilities.
 
 ## 2. Goals
 

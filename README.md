@@ -368,4 +368,3 @@ ISC
 ## 🙏 Acknowledgements
 
 - [LangGraph.js](https://github.com/langchain-ai/langgraphjs) · [LangChain.js](https://github.com/langchain-ai/langchainjs) · [React](https://react.dev/) · [Tailwind CSS](https://tailwindcss.com/)
-- Based on the open-source reference project [js0205/langgraph-project](https://github.com/js0205/langgraph-project)
