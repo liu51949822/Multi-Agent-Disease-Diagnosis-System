@@ -25,12 +25,18 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 function TracePanel({ traces }: { traces: AgentTrace[] }) {
+  const totalElapsed = traces.reduce((sum, t) => sum + (t.elapsed ?? 0), 0);
+
   return (
-    <div className="space-y-2 py-2">
+    <div className="space-y-1.5 py-2">
       {traces.map((t) => (
-        <div key={t.agent} className="flex items-start gap-3">
-          <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm flex-shrink-0 mt-0.5
-            ${t.status === 'done' ? 'bg-green-100' : t.status === 'running' ? 'bg-blue-100' : t.status === 'error' ? 'bg-red-100' : 'bg-gray-100'}`}>
+        <div
+          key={t.agent}
+          className={`flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors
+            ${t.status === 'running' ? 'bg-blue-50 border border-blue-200 shadow-sm' : ''}`}
+        >
+          <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm flex-shrink-0
+            ${t.status === 'done' ? 'bg-green-100' : t.status === 'running' ? 'bg-blue-500 text-white' : t.status === 'error' ? 'bg-red-100' : 'bg-gray-100'}`}>
             {t.status === 'running' ? (
               <span className="animate-spin text-xs">⟳</span>
             ) : (
@@ -44,7 +50,10 @@ function TracePanel({ traces }: { traces: AgentTrace[] }) {
                 {t.label}
               </span>
               {t.status === 'running' && (
-                <span className="text-xs text-blue-500 animate-pulse">处理中...</span>
+                <span className="text-xs text-blue-500 animate-pulse font-medium">Running…</span>
+              )}
+              {t.status === 'done' && t.elapsed != null && (
+                <span className="text-xs text-green-600 font-mono">{t.elapsed}ms</span>
               )}
             </div>
             {t.summary && (
@@ -53,6 +62,11 @@ function TracePanel({ traces }: { traces: AgentTrace[] }) {
           </div>
         </div>
       ))}
+      {traces.length > 0 && totalElapsed > 0 && (
+        <div className="text-xs text-gray-400 text-right mt-1 font-mono">
+          Total: {totalElapsed}ms
+        </div>
+      )}
     </div>
   );
 }
@@ -275,6 +289,7 @@ export default function App() {
                 agent: event.agent,
                 label: AGENT_LABELS[event.agent] ?? event.agent,
                 status: 'running',
+                startedAt: Date.now(),
               };
               return { ...m, traces: [...(m.traces ?? []), newTrace] };
             }));
@@ -282,7 +297,9 @@ export default function App() {
             setMessages(prev => prev.map(m => {
               if (m.id !== assistantId) return m;
               const traces = (m.traces ?? []).map(t =>
-                t.agent === event.agent ? { ...t, status: 'done' as const, summary: event.summary } : t
+                t.agent === event.agent
+                  ? { ...t, status: 'done' as const, summary: event.summary, elapsed: Date.now() - (t.startedAt ?? Date.now()) }
+                  : t
               );
               return { ...m, traces };
             }));
@@ -329,12 +346,12 @@ export default function App() {
           if (event.type === 'agent_start') {
             setMessages(prev => prev.map(m => {
               if (m.id !== assistantId) return m;
-              return { ...m, traces: [...(m.traces ?? []), { agent: event.agent, label: AGENT_LABELS[event.agent] ?? event.agent, status: 'running' as const }] };
+              return { ...m, traces: [...(m.traces ?? []), { agent: event.agent, label: AGENT_LABELS[event.agent] ?? event.agent, status: 'running' as const, startedAt: Date.now() }] };
             }));
           } else if (event.type === 'agent_complete') {
             setMessages(prev => prev.map(m => {
               if (m.id !== assistantId) return m;
-              return { ...m, traces: (m.traces ?? []).map(t => t.agent === event.agent ? { ...t, status: 'done' as const, summary: event.summary } : t) };
+              return { ...m, traces: (m.traces ?? []).map(t => t.agent === event.agent ? { ...t, status: 'done' as const, summary: event.summary, elapsed: Date.now() - (t.startedAt ?? Date.now()) } : t) };
             }));
           } else if (event.type === 'final_result') {
             updateAssistantMsg(assistantId, { result: event.data, streaming: false });

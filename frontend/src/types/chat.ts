@@ -13,6 +13,8 @@ export interface AgentTrace {
   label: string;
   status: 'pending' | 'running' | 'done' | 'error';
   summary?: string;
+  startedAt?: number; // 节点开始执行的时间戳（ms）
+  elapsed?: number; // 执行耗时（ms），完成时填入
 }
 
 // 最终建议结果（与后端 AdvisorResult 对应）
