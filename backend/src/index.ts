@@ -1,5 +1,6 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import dotenv from 'dotenv';
@@ -36,6 +37,17 @@ function resolveCorsOrigin(): cors.CorsOptions['origin'] {
 
 app.use(cors({ origin: resolveCorsOrigin() }));
 app.use(express.json({ limit: '20mb' }));
+
+// 生产安全：全局限流（开发 1000/min，生产 100/min）
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: process.env.NODE_ENV === 'production' ? 100 : 1000,
+    message: { error: 'Too many requests, slow down.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
 
 // 健康检查路由
 app.get('/api/health', (req: Request, res: Response) => {

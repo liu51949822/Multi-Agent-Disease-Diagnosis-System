@@ -79,16 +79,16 @@ function ResultCard({ result }: { result: AdvisorResult }) {
       {result.aestheticAnalysis && (
         <div className="bg-pink-50 rounded-lg p-3">
           <div className="font-semibold text-pink-800 mb-1">🪞 美学分析</div>
-          <p className="text-gray-700">{result.aestheticAnalysis}</p>
+          <p className="text-gray-700 dark:text-gray-300">{result.aestheticAnalysis}</p>
         </div>
       )}
 
       {result.recommendedProcedures.length > 0 && (
         <div className="space-y-2">
-          <div className="font-semibold text-gray-800">🏥 建议咨询项目</div>
+          <div className="font-semibold text-gray-800 dark:text-gray-100">🏥 建议咨询项目</div>
           {result.recommendedProcedures.map((p, i) => (
             <div key={i} className="bg-green-50 rounded-lg p-3 border border-green-200">
-              <div className="font-medium text-gray-800">{p.name}</div>
+              <div className="font-medium text-gray-800 dark:text-gray-100">{p.name}</div>
               <div className="text-gray-600 mt-1">{p.reason}</div>
               <div className="text-blue-700 mt-1">预期效果（参考）：{p.expectedOutcome}</div>
               {p.precautions.length > 0 && (
@@ -106,14 +106,14 @@ function ResultCard({ result }: { result: AdvisorResult }) {
       {result.riskAssessment && (
         <div className="bg-red-50 rounded-lg p-3">
           <div className="font-semibold text-red-800 mb-1">⚠️ 术前风险评估</div>
-          <p className="text-gray-700">{result.riskAssessment}</p>
+          <p className="text-gray-700 dark:text-gray-300">{result.riskAssessment}</p>
         </div>
       )}
 
       {result.carePlan && (
         <div className="bg-blue-50 rounded-lg p-3">
           <div className="font-semibold text-blue-800 mb-1">🩹 术后护理建议</div>
-          <p className="text-gray-700">{result.carePlan}</p>
+          <p className="text-gray-700 dark:text-gray-300">{result.carePlan}</p>
         </div>
       )}
 
@@ -121,17 +121,29 @@ function ResultCard({ result }: { result: AdvisorResult }) {
         <div className="bg-amber-50 rounded-lg p-3">
           <div className="font-semibold text-amber-800 mb-1">📌 注意事项</div>
           <ul className="space-y-1">
-            {result.precautions.map((p, i) => <li key={i} className="text-gray-700">• {p}</li>)}
+            {result.precautions.map((p, i) => <li key={i} className="text-gray-700 dark:text-gray-300">• {p}</li>)}
           </ul>
         </div>
       )}
 
-      <div className="bg-gray-50 rounded-lg p-3 border-l-4 border-blue-400">
+      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 border-l-4 border-blue-400">
         <div className="font-semibold text-gray-700 mb-1">面诊建议</div>
-        <p className="text-gray-600">{result.urgency}</p>
+        <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500">{result.urgency}</p>
       </div>
 
       <p className="text-xs text-gray-400 italic">{result.disclaimer}</p>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100 mt-3">
+        <span className="text-xs text-gray-400">Was this helpful?</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); (e.target as any).classList.toggle('text-green-600'); }}
+          className="text-sm hover:scale-125 transition-transform"
+          title="Helpful">👍</button>
+        <button
+          onClick={(e) => { e.stopPropagation(); (e.target as any).classList.toggle('text-red-600'); }}
+          className="text-sm hover:scale-125 transition-transform"
+          title="Not helpful">👎</button>
+      </div>
     </div>
   );
 }
@@ -155,7 +167,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
       <div className="max-w-[85%] space-y-2">
         {/* 执行轨迹 */}
         {msg.traces && msg.traces.length > 0 && (
-          <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3 border border-gray-200 dark:border-gray-700">
             <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
               Agent 执行轨迹
             </div>
@@ -165,7 +177,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
 
         {/* 最终结果 */}
         {msg.result && (
-          <div className="bg-white rounded-xl px-4 py-4 border border-gray-200 shadow-sm">
+          <div className="bg-white dark:bg-gray-800 rounded-xl px-4 py-4 border border-gray-200 dark:border-gray-700 shadow-sm">
             <ResultCard result={msg.result} />
           </div>
         )}
@@ -214,11 +226,34 @@ export default function App() {
     localStorage.setItem('wa-user', id);
     return id;
   })());
+  // 暗色模式
+  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark');
+  const toggleDark = () => {
+    const next = !dark;
+    setDark(next);
+    localStorage.setItem('theme', next ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', next);
+  };
   // HITL 审批状态
   const [hitlWaiting, setHitlWaiting] = useState(false);
   const [hitlProcs, setHitlProcs] = useState<{ name: string; risks: string[] }[]>([]);
   const [hitlThreadId, setHitlThreadId] = useState('');
   const pendingResumeRef = useRef<boolean | null>(null);
+  // 语音输入（Web Speech API，Chrome/Safari 原生支持，无需后端）
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const startVoice = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { setImageError('Voice input requires Chrome/Safari'); return; }
+    const rec = new SR();
+    rec.lang = 'zh-CN'; rec.interimResults = false;
+    rec.onresult = (e: any) => { setInput((p: string) => p + e.results[0][0].transcript); setListening(false); };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    rec.start();
+    setListening(true);
+    recognitionRef.current = rec;
+  };
 
   useEffect(() => {
     chatService.checkHealth()
@@ -375,18 +410,19 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-100 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-100 dark:from-gray-900 dark:to-gray-800 flex flex-col">
       {/* 导航栏 */}
-      <nav className="bg-white shadow-sm border-b border-gray-200 flex-shrink-0">
+      <nav className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xl">🪞</span>
-            <span className="font-bold text-gray-800">整形美容智能顾问</span>
-            <span className="text-xs bg-pink-100 text-pink-700 px-2 py-0.5 rounded-full">多智能体</span>
+            <span className="font-bold text-gray-800 dark:text-gray-100">整形美容智能顾问</span>
+            <span className="text-xs bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300 px-2 py-0.5 rounded-full">多智能体</span>
           </div>
-          <div className="flex items-center gap-1.5 text-sm">
+          <div className="flex items-center gap-3 text-sm">
+            <button onClick={toggleDark} className="text-lg" title={dark ? '浅色模式' : '暗色模式'}>{dark ? '☀️' : '🌙'}</button>
             <span className={`w-2 h-2 rounded-full ${connected === null ? 'bg-gray-300' : connected ? 'bg-green-500' : 'bg-red-500'}`} />
-            <span className="text-gray-500">{connected === null ? '检查中' : connected ? '已连接' : '未连接'}</span>
+            <span className="text-gray-500 dark:text-gray-400 dark:text-gray-500">{connected === null ? '检查中' : connected ? '已连接' : '未连接'}</span>
           </div>
         </div>
       </nav>
@@ -397,12 +433,12 @@ export default function App() {
           {messages.length === 0 && (
             <div className="text-center pt-16 space-y-4">
               <div className="text-5xl">🪞</div>
-              <h2 className="text-2xl font-bold text-gray-800">欢迎使用整形美容智能顾问</h2>
+              <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100">欢迎使用整形美容智能顾问</h2>
               <p className="text-gray-500 text-sm">多智能体协作 · 实时执行追踪 · 可上传照片进行美学分析</p>
               <div className="grid grid-cols-2 gap-2 max-w-lg mx-auto pt-4">
                 {['我想做双眼皮，需要注意什么？', '我脸型偏方，适合做下颌角手术吗？', '玻尿酸填充和肉毒素有什么区别？', '做完抽脂手术后怎么护理？'].map((q) => (
                   <button key={q} onClick={() => setInput(q)}
-                    className="p-3 text-left bg-white hover:bg-pink-50 rounded-xl text-sm text-gray-700 border border-gray-200 transition-colors shadow-sm">
+                    className="p-3 text-left bg-white dark:bg-gray-800 hover:bg-pink-50 dark:hover:bg-gray-700 rounded-xl text-sm text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 transition-colors shadow-sm">
                     {q}
                   </button>
                 ))}
@@ -415,7 +451,7 @@ export default function App() {
       </div>
 
       {/* 输入区 */}
-      <div className="bg-white border-t border-gray-200 flex-shrink-0">
+      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 flex-shrink-0">
         <div className="max-w-4xl mx-auto px-4 py-3 space-y-2">
           {/* 照片预览 */}
           {image && (
@@ -438,9 +474,15 @@ export default function App() {
             />
             <button onClick={() => fileInputRef.current?.click()}
               disabled={loading}
-              className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm text-gray-700 disabled:opacity-50 flex-shrink-0"
+              className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl text-sm text-gray-700 dark:text-gray-200 disabled:opacity-50 flex-shrink-0"
               title="上传照片">
               📷
+            </button>
+            <button onClick={startVoice}
+              disabled={loading || listening}
+              className={`px-3 py-2.5 rounded-xl text-sm flex-shrink-0 disabled:opacity-50 ${listening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'}`}
+              title="语音输入">
+              {listening ? '⏺' : '🎤'}
             </button>
             <textarea
               value={input}
@@ -449,7 +491,7 @@ export default function App() {
               placeholder="描述您的整形美容诉求，或上传照片后咨询..."
               disabled={loading || !connected}
               rows={1}
-              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-500 resize-none disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-pink-500 resize-none disabled:bg-gray-100 disabled:cursor-not-allowed text-sm"
               style={{ minHeight: '44px', maxHeight: '120px' }}
             />
             <button onClick={handleSend}
@@ -465,7 +507,7 @@ export default function App() {
       {/* HITL 审批对话框 */}
       {hitlWaiting && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm mx-4 w-full">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-sm mx-4 w-full">
             <div className="text-center mb-4">
               <span className="text-3xl">⚠️</span>
               <h3 className="text-lg font-bold text-gray-800 mt-2">手术建议审批</h3>
@@ -474,7 +516,7 @@ export default function App() {
             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
               {hitlProcs.map((p, i) => (
                 <div key={i} className="bg-amber-50 rounded-lg p-3">
-                  <div className="font-semibold text-gray-800">{p.name}</div>
+                  <div className="font-semibold text-gray-800 dark:text-gray-100">{p.name}</div>
                   {p.risks.length > 0 && (
                     <ul className="mt-1 text-xs text-red-600">
                       {p.risks.map((r, j) => <li key={j}>⚠ {r}</li>)}
@@ -485,7 +527,7 @@ export default function App() {
             </div>
             <div className="flex gap-3">
               <button onClick={() => handleResume(false)}
-                className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-semibold text-gray-700">
+                className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-semibold text-gray-700 dark:text-gray-300">
                 拒绝，仅咨询
               </button>
               <button onClick={() => handleResume(true)}

@@ -140,6 +140,48 @@ ${context}
 
 要求：语言专业准确，突出重要警告，强调手术需正规医疗机构面诊，综合所有可用信息。`;
 
-    return await this.invokeJSON<AdvisorResult>(prompt);
+    const result = await this.invokeJSON<AdvisorResult>(prompt);
+
+    // 自反思：用轻量 judge 检查回答质量，不通过则带反馈重生成
+    try {
+      const review = await this.selfReview(context, result);
+      if (review.score < 60) {
+        this.log(`自反思评分 ${review.score}，进行重生成...`);
+        const retryPrompt = `${prompt}\n\n⚠️ 上一轮回答存在以下问题，请修正后重新生成：\n${review.feedback}\n\n只返回修正后的 JSON：`;
+        return await this.invokeJSON<AdvisorResult>(retryPrompt);
+      }
+      this.log(`自反思通过：${review.score} 分`);
+    } catch (err) {
+      // 自反思失败静默降级，不阻塞主流程
+      this.log(`自反思降级跳过: ${err instanceof Error ? err.message.slice(0, 80) : String(err)}`);
+    }
+
+    return result;
+  }
+
+  /** 轻量自反思：检查回答的安全性、完整性（不依赖外部 judge 模型） */
+  private async selfReview(context: string, result: AdvisorResult): Promise<{ score: number; feedback: string }> {
+    const reviewPrompt = `你是整形医疗咨询的合规审查官。请对以下回答评分（0-100）：
+
+【用户上下文】
+${context.slice(0, 500)}
+
+【系统回答】
+${JSON.stringify(result)}
+
+评分标准：
+- 0-30：幻觉严重、推荐危险手术、缺少免責声明
+- 31-50：结构不全、忽略重要警告
+- 51-70：基本可用，但缺少部分细节
+- 71-100：全面准确，安全合规
+
+请只返回 JSON：{"score": 0-100, "feedback": "改进建议"}`;
+
+    const raw = await this.model.invoke(reviewPrompt);
+    const text = raw.content.toString();
+    const match = text.match(/(\{[\s\S]*\})/);
+    if (!match) return { score: 100, feedback: '' }; // 解析失败当作通过
+    const parsed = JSON.parse(match[0]);
+    return { score: parsed.score ?? 100, feedback: parsed.feedback ?? '' };
   }
 }

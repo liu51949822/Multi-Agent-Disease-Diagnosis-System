@@ -24,6 +24,8 @@ describe('AdvisorAgent', () => {
     vi.spyOn(sharedModel, 'invoke').mockResolvedValueOnce({
       content: JSON.stringify(makeAdvisorPayload()),
     } as any);
+    // mock selfReview 返回高分跳过重生成
+    vi.spyOn(AdvisorAgent.prototype as any, 'selfReview').mockResolvedValue({ score: 85, feedback: '' });
 
     const agent = new AdvisorAgent();
     const result = await agent.execute({ userMessage: '我想做双眼皮', errors: [] });
@@ -48,6 +50,7 @@ describe('AdvisorAgent', () => {
     vi.spyOn(sharedModel, 'invoke').mockResolvedValueOnce({
       content: JSON.stringify(makeAdvisorPayload()),
     } as any);
+    vi.spyOn(AdvisorAgent.prototype as any, 'selfReview').mockResolvedValue({ score: 90, feedback: '' });
 
     const agent = new AdvisorAgent();
     await agent.execute({

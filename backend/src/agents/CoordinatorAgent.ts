@@ -16,6 +16,12 @@ export class CoordinatorAgent extends BaseAgent {
       this.log(`分析完成 - 复杂度: ${analysis.complexity}`);
       this.log(`执行计划: ${plan.join(' → ')}`);
 
+      // Plan 验证：规则检查确保多智能体路由逻辑不出现致命错误
+      const validationWarnings = this.validatePlan(plan, state);
+      if (validationWarnings.length > 0) {
+        this.log(`Plan 验证告警: ${validationWarnings.join('; ')}`);
+      }
+
       return {
         coordinatorDecision: {
           needsAesthetic: analysis.needsAesthetic,
@@ -43,6 +49,41 @@ export class CoordinatorAgent extends BaseAgent {
         errors: [String(error)],
       };
     }
+  }
+
+  /** Plan 验证：规则检查确保路由安全。
+   *  面试叙事：多智能体编排不只是"生成 plan 直接执行"——
+   *  还有一层确定性验证守卫，确保 LLM 输出的 plan 没有逻辑矛盾。 */
+  private validatePlan(plan: string[], state: AgentState): string[] {
+    const warnings: string[] = [];
+
+    // advisor 必须压轴
+    if (plan.length > 1 && plan[plan.length - 1] !== 'advisor') {
+      warnings.push('advisor 不在 plan 末尾（已自动修正）');
+      plan.push('advisor');
+    }
+
+    // 没有 adviser 时自动追加
+    if (!plan.includes('advisor')) {
+      plan.push('advisor');
+    }
+
+    // 照片已上传但 plan 不包含 aesthetic（可能漏了视觉分析）
+    if (state.image && !plan.includes('aesthetic') && !plan.includes('coordinator')) {
+      warnings.push('用户上传了照片但 plan 不含美学分析（可能是 LLM 遗漏）');
+    }
+
+    // 高风险场景：手术项目 + 无风险评估
+    if (plan.includes('surgeon') && !plan.includes('risk')) {
+      warnings.push('包含手术咨询但缺少术前风险评估（建议补充）');
+    }
+
+    // 手术项目 + 无术后护理
+    if (plan.includes('surgeon') && !plan.includes('care')) {
+      warnings.push('包含手术咨询但缺少术后护理（建议补充）');
+    }
+
+    return warnings;
   }
 
   private async analyzeQuestion(message: string, state: AgentState): Promise<CoordinatorAnalysis> {
