@@ -469,7 +469,7 @@ Tests mock the shared model (`vi.spyOn(sharedModel, 'invoke')`) and the vector s
 
 ## 📄 License
 
-ISC
+**Proprietary / Non-Open-Source** — All rights reserved. Personal, non-commercial use and studying the code for learning is permitted; **commercial use requires a separate written license**. See [LICENSE](LICENSE).
 
 ## 🙏 Acknowledgements
 
