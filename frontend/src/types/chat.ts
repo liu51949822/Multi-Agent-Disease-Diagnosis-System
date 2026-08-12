@@ -2,6 +2,7 @@
 export type SseEvent =
   | { type: 'agent_start'; agent: string }
   | { type: 'agent_complete'; agent: string; summary: string }
+  | { type: 'hitl_required'; procedures: { name: string; risks: string[] }[]; question: string; threadId: string }
   | { type: 'final_result'; data: AdvisorResult }
   | { type: 'error'; message: string }
   | { type: 'done' };

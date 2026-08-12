@@ -15,11 +15,16 @@ export const chatService = {
     onEvent: (event: SseEvent) => void,
     signal?: AbortSignal,
     memory?: { sessionId?: string; userId?: string; history?: { role: 'user' | 'assistant'; content: string }[] },
+    hitl?: { resume?: unknown; threadId?: string },
   ): Promise<void> {
+    const { resume, threadId } = hitl ?? {};
+    const body: Record<string, unknown> = { message, image, ...memory };
+    if (resume !== undefined) { body.resume = resume; }
+    if (threadId) { body.threadId = threadId; }
     const response = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, image, ...memory }),
+      body: JSON.stringify(body),
       signal,
     });
 

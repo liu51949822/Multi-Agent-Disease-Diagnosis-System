@@ -200,6 +200,11 @@ export default function App() {
     localStorage.setItem('wa-user', id);
     return id;
   })());
+  // HITL 审批状态
+  const [hitlWaiting, setHitlWaiting] = useState(false);
+  const [hitlProcs, setHitlProcs] = useState<{ name: string; risks: string[] }[]>([]);
+  const [hitlThreadId, setHitlThreadId] = useState('');
+  const pendingResumeRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     chatService.checkHealth()
@@ -281,6 +286,11 @@ export default function App() {
               );
               return { ...m, traces };
             }));
+          } else if (event.type === 'hitl_required') {
+            // HITL：暂停流式，弹出审批对话框
+            setHitlProcs(event.procedures ?? []);
+            setHitlThreadId(event.threadId);
+            setHitlWaiting(true);
           } else if (event.type === 'final_result') {
             updateAssistantMsg(assistantId, { result: event.data, streaming: false });
           } else if (event.type === 'error') {
@@ -303,6 +313,48 @@ export default function App() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  // HITL 审批：用户确认/拒绝后 resume 图执行
+  const handleResume = async (approved: boolean) => {
+    setHitlWaiting(false);
+    setLoading(true);
+    const assistantId = `${Date.now()}-resume`;
+    setMessages(prev => [...prev, { id: assistantId, role: 'assistant', traces: [], streaming: true }]);
+    try {
+      await chatService.streamConsult(
+        '.', // resume 时消息可空，仅用于 continuation
+        undefined,
+        (event: SseEvent) => {
+          if (event.type === 'agent_start') {
+            setMessages(prev => prev.map(m => {
+              if (m.id !== assistantId) return m;
+              return { ...m, traces: [...(m.traces ?? []), { agent: event.agent, label: AGENT_LABELS[event.agent] ?? event.agent, status: 'running' as const }] };
+            }));
+          } else if (event.type === 'agent_complete') {
+            setMessages(prev => prev.map(m => {
+              if (m.id !== assistantId) return m;
+              return { ...m, traces: (m.traces ?? []).map(t => t.agent === event.agent ? { ...t, status: 'done' as const, summary: event.summary } : t) };
+            }));
+          } else if (event.type === 'final_result') {
+            updateAssistantMsg(assistantId, { result: event.data, streaming: false });
+          } else if (event.type === 'error') {
+            updateAssistantMsg(assistantId, { error: event.message, streaming: false });
+          } else if (event.type === 'done') {
+            updateAssistantMsg(assistantId, { streaming: false });
+          }
+        },
+        undefined,
+        { sessionId, userId, history: messages.filter(m => m.content && !m.streaming).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content as string })) },
+        { resume: approved, threadId: hitlThreadId },
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        updateAssistantMsg(assistantId, { error: `Resume 失败：${err.message}`, streaming: false });
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -392,6 +444,41 @@ export default function App() {
           <p className="text-xs text-gray-400 text-center">AI 回复仅供参考，整形/医疗建议请务必咨询专业医生面诊</p>
         </div>
       </div>
+
+      {/* HITL 审批对话框 */}
+      {hitlWaiting && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm mx-4 w-full">
+            <div className="text-center mb-4">
+              <span className="text-3xl">⚠️</span>
+              <h3 className="text-lg font-bold text-gray-800 mt-2">手术建议审批</h3>
+              <p className="text-sm text-gray-500 mt-1">系统已将手术建议提交审核</p>
+            </div>
+            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+              {hitlProcs.map((p, i) => (
+                <div key={i} className="bg-amber-50 rounded-lg p-3">
+                  <div className="font-semibold text-gray-800">{p.name}</div>
+                  {p.risks.length > 0 && (
+                    <ul className="mt-1 text-xs text-red-600">
+                      {p.risks.map((r, j) => <li key={j}>⚠ {r}</li>)}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => handleResume(false)}
+                className="flex-1 py-2.5 bg-gray-200 hover:bg-gray-300 rounded-xl font-semibold text-gray-700">
+                拒绝，仅咨询
+              </button>
+              <button onClick={() => handleResume(true)}
+                className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 rounded-xl font-semibold text-white">
+                确认，继续评估
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

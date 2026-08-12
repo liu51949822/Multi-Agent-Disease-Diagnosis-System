@@ -1,6 +1,7 @@
 import { BaseAgent } from './BaseAgent';
 import { AgentState, SurgeonResult } from './types';
 import { searchPlasticGuides, PlasticChunk } from '../retrieval/vectorStore';
+import { getRecoveryInfo } from '../tools/surgeryTools';
 
 export class SurgeonAgent extends BaseAgent {
   constructor() {
@@ -67,6 +68,18 @@ ${rule}
     if (!hasData && !warnings.some((w) => w.includes('未检索到资料库'))) {
       warnings.push('未检索到资料库，以下为通用建议，请以医生意见为准');
     }
-    return { procedures: raw.procedures ?? [], warnings, sources };
+    // 真实工具：为每个 LLM 推荐的项目补充标准恢复期数据
+    const enriched = (raw.procedures ?? []).map((p) => {
+      const rec = getRecoveryInfo(p.name);
+      if (rec) {
+        // 工具提供的标准恢复期数据覆盖 LLM 输出，确保数值准确
+        p.recoveryTime = rec.timeline;
+        if (!p.risks?.length) p.risks = [];
+        p.risks.push(...rec.restrictions.map((r) => `[恢复期限制] ${r}`));
+      }
+      return p;
+    });
+
+    return { procedures: enriched, warnings, sources };
   }
 }

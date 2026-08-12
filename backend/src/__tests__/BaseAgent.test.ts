@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { sharedModel, BaseAgent } from '../agents/BaseAgent';
 import { AgentState } from '../agents/types';
+import { z } from 'zod';
+
+afterEach(() => vi.restoreAllMocks());
 
 // 用于暴露 protected 方法的测试子类
 class TestAgent extends BaseAgent {
@@ -11,6 +14,9 @@ class TestAgent extends BaseAgent {
   }
   async callInvokeVision<T>(prompt: string, imageDataUri: string) {
     return this.invokeVision<T>(prompt, imageDataUri);
+  }
+  async callInvokeStructured<T>(prompt: string, schema: z.ZodSchema<T>) {
+    return this.invokeStructured(prompt, schema);
   }
 }
 
@@ -83,5 +89,33 @@ describe('BaseAgent.invokeVision', () => {
       content: '无法识别的图片',
     } as any);
     await expect(new TestAgent().callInvokeVision('p', 'data:image/jpeg;base64,QUJD')).rejects.toThrow('JSON 提取失败');
+  });
+});
+
+describe('BaseAgent.invokeStructured', () => {
+  const Schema = z.object({ result: z.string(), score: z.number() });
+
+  it('zod 验证通过直接返回', async () => {
+    vi.spyOn(sharedModel, 'withStructuredOutput' as any).mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ result: 'ok', score: 90 }),
+    } as any);
+
+    const result = await new TestAgent().callInvokeStructured('p', Schema);
+    expect(result).toEqual({ result: 'ok', score: 90 });
+  });
+
+  it('首试失败 → 自纠正重试 → 最终兜底正则提取', async () => {
+    vi.spyOn(sharedModel, 'withStructuredOutput' as any).mockReturnValue({
+      invoke: vi.fn()
+        .mockRejectedValueOnce(new Error('parse fail'))  // 首试
+        .mockRejectedValueOnce(new Error('still fails')), // 重试 1
+    } as any);
+    // 兜底：正则提取 → zod 解析（model.invoke）
+    vi.spyOn(sharedModel, 'invoke').mockResolvedValueOnce({
+      content: JSON.stringify({ result: 'fallback', score: 60 }),
+    } as any);
+
+    const result = await new TestAgent().callInvokeStructured('p', Schema);
+    expect(result).toEqual({ result: 'fallback', score: 60 });
   });
 });

@@ -76,13 +76,16 @@ export interface RecommendedProcedure {
 export interface AgentState {
   userMessage: string;
   image?: string; // data URI（照片，可选）
-  // ---- 记忆三件套（由 memory 门面注入，均可选） ----
-  sessionId?: string; // 会话 id（thread 级短期记忆）
-  userId?: string; // 用户 id（跨会话长期记忆/向量记忆）
+  // ---- 记忆三件套字段（均由 memory 门面注入，均可选） ----
+  sessionId?: string;
+  userId?: string;
   summary?: string; // 早期对话摘要（短期记忆）
   recentHistory?: { role: 'user' | 'assistant'; content: string }[]; // 最近对话窗口
   userProfile?: string; // 长期用户档案文本
   relevantHistory?: string; // 向量检索到的相关历史文本
+  // ---- HITL 人工审批 ----
+  hitlApproved?: boolean; // 手术建议是否经用户确认
+  hitlFeedback?: string; // 用户审批反馈
   coordinatorDecision?: CoordinatorDecision;
   aestheticResults?: AestheticResult;
   surgeonResults?: SurgeonResult;
@@ -102,20 +105,40 @@ export interface IAgent {
 
 // ===== Coordinator 内部分析结果 =====
 
-export interface CoordinatorAnalysis {
-  needsAesthetic: boolean;
-  needsSurgeon: boolean;
-  needsRisk: boolean;
-  needsCare: boolean;
-  complexity: 'simple' | 'medium' | 'complex';
-  reasoning: string;
-}
+import { z } from 'zod';
+
+export const CoordinatorAnalysisSchema = z.object({
+  needsAesthetic: z.boolean(),
+  needsSurgeon: z.boolean(),
+  needsRisk: z.boolean(),
+  needsCare: z.boolean(),
+  complexity: z.enum(['simple', 'medium', 'complex']),
+  reasoning: z.string(),
+});
+export type CoordinatorAnalysis = z.infer<typeof CoordinatorAnalysisSchema>;
+
+export const AestheticResultSchema = z.object({
+  analyzed: z.boolean(),
+  photoObservations: z.array(z.string()),
+  facialAnalysis: z.string(),
+  concerns: z.array(z.string()),
+  suggestions: z.array(z.string()),
+  confidence: z.number().min(0).max(100),
+});
+
+export const RiskAssessmentResultSchema = z.object({
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  riskFactors: z.array(z.string()),
+  contraindications: z.array(z.string()),
+  recommendations: z.array(z.string()),
+});
 
 // ===== SSE 事件类型 =====
 
 export type SseEvent =
   | { type: 'agent_start'; agent: string }
   | { type: 'agent_complete'; agent: string; summary: string }
+  | { type: 'hitl_required'; procedures: { name: string; risks: string[] }[]; question: string; threadId: string }
   | { type: 'final_result'; data: AdvisorResult }
   | { type: 'error'; message: string }
   | { type: 'done' };

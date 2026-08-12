@@ -1,5 +1,7 @@
 import { BaseAgent } from './BaseAgent';
 import { AgentState, RiskAssessmentResult } from './types';
+import { checkContraindications } from '../tools/surgeryTools';
+import type { ContraindicationResult } from '../tools/surgeryTools';
 
 export class RiskAssessorAgent extends BaseAgent {
   constructor() {
@@ -30,8 +32,15 @@ export class RiskAssessorAgent extends BaseAgent {
   private async assess(state: AgentState): Promise<RiskAssessmentResult> {
     const context = this.buildContext(state);
 
+    // 真实工具：禁忌症核对（domain logic，非 LLM）
+    const contraindication = checkContraindications(state.userMessage);
+    const toolOutput = contraindication.matched.length > 0
+      ? `⚠ 真实工具检测到潜在禁忌因素: ${contraindication.matched.join('、')}\n系统提示: ${contraindication.warnings.join('; ')}\n`
+      : '（工具未检测到明确的禁忌关键词，请 LLM 自行判断）\n';
+
     const prompt = `你是整形外科术前风险评估专家。请基于以下信息评估用户的术前风险。
 
+${toolOutput}
 ${context}
 
 请一次性返回以下 JSON，不要添加其他内容：

@@ -1,5 +1,5 @@
 import { BaseAgent } from './BaseAgent';
-import { AgentState, CoordinatorAnalysis } from './types';
+import { AgentState, CoordinatorAnalysis, CoordinatorAnalysisSchema } from './types';
 
 export class CoordinatorAgent extends BaseAgent {
   constructor() {
@@ -70,7 +70,7 @@ ${memory}
   "reasoning": "分析原因（中文）"
 }`;
 
-    return await this.invokeJSON<CoordinatorAnalysis>(prompt);
+    return await this.invokeStructured(prompt, CoordinatorAnalysisSchema);
   }
 
   private buildPlan(analysis: CoordinatorAnalysis): string[] {

@@ -27,15 +27,19 @@ function isValidImageDataUri(value: unknown): value is string {
  *   sessionId?: string,         // 会话 id（短期记忆，可选）
  *   userId?: string,            // 用户 id（长期档案/向量记忆，可选）
  *   history?: {role,content}[]  // 历史对话（短期记忆事实来源，可选）
+ *   resume?: unknown             // HITL resume 值（用户确认/拒绝）
+ *   threadId?: string           // 恢复时复用 thread_id（checkpointer 用）
  * }
  */
 router.post('/chat/stream', async (req: Request, res: Response) => {
-  const { message, image, sessionId, userId, history } = req.body as {
+  const { message, image, sessionId, userId, history, resume, threadId } = req.body as {
     message?: string;
     image?: unknown;
     sessionId?: string;
     userId?: string;
     history?: { role: 'user' | 'assistant'; content: string }[];
+    resume?: unknown;
+    threadId?: string;
   };
 
   if (!message || typeof message !== 'string' || message.trim() === '') {
@@ -78,7 +82,7 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     message.trim(),
     image as string | undefined,
     send,
-    { sessionId: sessionId as string | undefined, userId: userId as string | undefined, history },
+    { sessionId: sessionId as string | undefined, userId: userId as string | undefined, history, resume, threadId },
   );
   if (!closed) res.end();
 });

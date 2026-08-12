@@ -6,6 +6,17 @@ import chatRoutes from './routes/chatRoutes';
 // 加载环境变量
 dotenv.config();
 
+// LangSmith 追踪（可选：无 LANGCHAIN_API_KEY 时自动降级，不影响应用）
+try {
+  if (process.env.LANGCHAIN_TRACING_V2 === 'true' && process.env.LANGCHAIN_API_KEY) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('langsmith');
+    console.log('[LangSmith] 追踪已启用');
+  }
+} catch {
+  // langsmith 包未安装或配置缺失，静默跳过
+}
+
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
 

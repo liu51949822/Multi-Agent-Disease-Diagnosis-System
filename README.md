@@ -461,6 +461,61 @@ Request body additions: `sessionId`, `userId`, `history` (all optional). The fro
 - **Vision path** reuses the same shared model via `invokeVision`, keeping tests and architecture uniform.
 - **Image validation** at the route layer prevents arbitrary JSON from reaching the model.
 
+## 🏭 Production-Grade Features
+
+Beyond the core multi-agent consultation, the system includes features that bridge the gap from "demo" to "production-ready":
+
+### Human-in-the-Loop (HITL) Approval Gate
+
+After the surgeon agent recommends procedures, the graph hits a **HITL gate** (`hitlGateNode`). The system pauses via LangGraph's `interrupt()`, sends procedure details + risks to the frontend, and **waits for the user to approve or reject** before proceeding with risk assessment and post-op care. On rejection, the graph skips directly to the advisor for a consultation-only summary.
+
+```mermaid
+graph TD
+    surgeon[SurgeonAgent] -->|procedures found| gate[HITL Gate]
+    gate -->|interrupt| wait[User reviews]
+    wait -->|approve| risk[RiskAssessor]
+    wait -->|reject| advisor[Advisor]
+    risk --> care[CareAgent]
+    care --> advisor
+```
+
+Resume uses `Command({resume})` with `checkpointer` (`MemorySaver`) — the graph state is checkpointed, and re-running with the same `thread_id` restores it from the pause point.
+
+### Parallel Fan-out (Send API)
+
+Aesthetic analysis and surgeon consultation have **no data dependency** — they work on the same user message independently. The coordinator fan-out node uses LangGraph's `Send` API to launch both in parallel, cutting per-request latency when the plan includes both nodes.
+
+### Zod Structured Output + Self-Correction
+
+`BaseAgent.invokeStructured(prompt, zodSchema)` replaces raw regex JSON extraction with:
+1. **Gemini native structured output** (`withStructuredOutput`)
+2. **Zod validation** on the result
+3. **Self-correction retry**: on failure, re-prompts the model with error feedback
+4. **Fallback**: regex extraction + zod parse as last resort
+
+This ensures agents never silently accept malformed model output.
+
+### Real Domain Tools
+
+Beyond the RAG retriever, agents use **deterministic domain tools** (not LLM-generated):
+
+| Tool | Agent | Description |
+|---|---|---|
+| `checkContraindications()` | RiskAssessor | Keyword-based contraindication matching (pregnancy, anticoagulants, etc.) |
+| `getRecoveryInfo()` | Surgeon | Standard recovery timelines + post-op restrictions for common procedures |
+
+These tools enrich LLM output with **verifiable, non-hallucinated data** — the risk assessor feeds real matched contraindications into the prompt; the surgeon replaces LLM-estimated recovery times with standard values.
+
+### Evals & Quality
+
+- **Golden QA set** (`eval/golden-qa.json`): 10 questions with expected keywords
+- **LLM-as-judge** (`eval/judge.ts`): scores relevance / safety / completeness with a separate zero-temperature Gemini call
+- Quantifies agent quality and catches regressions after code changes
+
+### LangSmith Tracing
+
+Set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY` in `.env` to enable **LangSmith observability** — per-agent latency, token usage, retrieval source attribution. Falls back silently when the key is missing (no-op for development).
+
 ---
 
 ## 🗺️ Roadmap
@@ -468,6 +523,11 @@ Request body additions: `sessionId`, `userId`, `history` (all optional). The fro
 - [x] Multi-turn conversation memory (short-term summarization)
 - [x] Long-term user profile (cross-session)
 - [x] Vector / semantic recall of past conversations
+- [x] HITL (human-in-the-loop) approval gate for procedure recommendations
+- [x] Parallel fan-out for independent agents (Send API)
+- [x] Zod structured output with self-correction retry
+- [x] Real domain tools (contraindications check, recovery estimate)
+- [x] Golden QA set + LLM-as-judge evals
 - [ ] Backend persistence via PostgresSaver / PostgresStore (currently in-memory)
 - [ ] Chat history persistence
 - [ ] User authentication & profiles
