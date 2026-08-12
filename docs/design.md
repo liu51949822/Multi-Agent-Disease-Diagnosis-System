@@ -49,6 +49,29 @@ The coordinator's `plan` (e.g. `['aesthetic','surgeon','risk','care','advisor']`
 - Without a photo but with aesthetic intent, `aesthetic` still runs in **text-only mode** (`analyzed: false`), a deliberate degradation path.
 - The advisor projection **never** includes the base64 image.
 
+### 4.2 Plan building
+
+The coordinator's `buildPlan` decides node order from intent flags:
+
+```mermaid
+flowchart TD
+    START([Coordinator.execute]) --> LLM[analyzeQuestion → intent flags]
+    LLM --> CHK{needsAesthetic?}
+    CHK -- yes --> A[aesthetic first]
+    CHK -- no --> S1{needsSurgeon?}
+    A --> S1
+    S1 -- yes --> S[surgeon]
+    S1 -- no --> R1{needsRisk?}
+    S --> R1
+    R1 -- yes --> R[risk]
+    R1 -- no --> C1{needsCare?}
+    R --> C1
+    C1 -- yes --> CA[care]
+    C1 -- no --> AD[advisor]
+    CA --> AD
+    AD --> END([plan + reasoning])
+```
+
 ## 5. Shared State Types
 
 See `backend/src/agents/types.ts`. Key additions:
@@ -78,6 +101,24 @@ It invokes the **shared model singleton** (`this.model.invoke`), so existing tes
 - **Projection**: only key fields are projected into the advisor prompt — no raw agent outputs, no base64 image.
 - **Length guard**: `MAX_CONTEXT_LEN = 4000`. Oversized contexts are truncated with a logged warning; core info (aesthetic/procedure/risk/care) takes priority.
 - Context length is logged per request to calibrate the threshold with real data.
+
+```mermaid
+flowchart LR
+    subgraph Inputs["AgentState results"]
+        AR[aestheticResults]
+        SR[surgeonResults]
+        RR[riskResults]
+        CR[careResults]
+    end
+    subgraph Guard["buildContext()"]
+        PROJ[projection: only key fields]
+        LEN["length guard<br/>MAX_CONTEXT_LEN = 4000"]
+    end
+    Inputs --> PROJ --> LEN --> PROMPT[advisor prompt]
+    note["❌ image (base64) never projected"]
+    style note fill:#FEE2E2,stroke:#DC2626
+    style Guard fill:#EFF6FF,stroke:#2563EB
+```
 
 ## 8. RAG (Surgeon)
 

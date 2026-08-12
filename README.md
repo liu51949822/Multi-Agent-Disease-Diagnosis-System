@@ -98,6 +98,59 @@ graph TB
 
 **Routing logic**: the coordinator produces a `plan` array (e.g. `['aesthetic', 'surgeon', 'risk', 'care', 'advisor']`). When a photo is present, `aesthetic` is placed first; without a photo but with aesthetic intent, `aesthetic` still runs in **text-only mode** (degradation path). Conditional edges chain nodes in plan order; `advisor` is always last.
 
+### Routing Graph
+
+```mermaid
+flowchart LR
+    START([START]) --> C[🎯 Coordinator]
+    C -->|"plan has aesthetic"| A[🪞 Aesthetic]
+    C -->|"no aesthetic"| S[🏥 Surgeon]
+    A --> S
+    S --> R[⚠️ Risk]
+    R --> CA[🩹 Care]
+    CA --> AD[💡 Advisor]
+    AD --> END([END])
+```
+
+### Multi-Agent Execution Sequence (SSE)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 User
+    participant FE as 🖥️ Frontend
+    participant API as 🌐 Express API
+    participant G as 🔄 LangGraph StateGraph
+    participant A1 as 🪞 AestheticAgent
+    participant A2 as 🏥 SurgeonAgent
+    participant A3 as ⚠️ RiskAssessorAgent
+    participant A4 as 🩹 CareAgent
+    participant A5 as 💡 AdvisorAgent
+
+    U->>FE: type message (+ optional photo)
+    FE->>API: POST /api/chat/stream { message, image }
+    API-->>FE: SSE: agent_start (coordinator)
+    API->>G: executeWithStream(state)
+    G->>A1: coordinator plan → aesthetic
+    API-->>FE: SSE: agent_start (aesthetic)
+    A1-->>G: AestheticResult
+    API-->>FE: SSE: agent_complete (aesthetic)
+    G->>A2: → surgeon
+    API-->>FE: SSE: agent_start (surgeon)
+    A2-->>G: SurgeonResult
+    API-->>FE: SSE: agent_complete (surgeon)
+    G->>A3: → risk
+    A3-->>G: RiskAssessmentResult
+    API-->>FE: SSE: agent_complete (risk)
+    G->>A4: → care
+    A4-->>G: CareResult
+    API-->>FE: SSE: agent_complete (care)
+    G->>A5: → advisor
+    A5-->>G: AdvisorResult
+    API-->>FE: SSE: final_result + done
+    FE-->>U: render ResultCard + trace panel
+```
+
 ### Context Management
 
 The advisor does **not** pass raw agent outputs through. Instead it builds a **structured projection** — extracting only key fields (aesthetic conclusion, procedure names + indications + recovery, risk level, care tips) into the prompt. A **length guard** (`MAX_CONTEXT_LEN = 4000`) truncates oversized contexts and logs the truncation — it never silently drops core information. Importantly, the projection **never** includes the base64 photo, avoiding token waste and privacy leakage. Every request logs the context length for calibration.
@@ -249,6 +302,22 @@ curl -N -X POST http://localhost:3000/api/chat/stream \
 }
 ```
 
+**SSE event sequence**
+
+```mermaid
+sequenceDiagram
+    participant FE as 🖥️ Frontend
+    participant API as 🌐 Express API
+    FE->>API: POST /api/chat/stream
+    loop each agent node
+        API-->>FE: agent_start
+        Note over API: agent executes
+        API-->>FE: agent_complete { summary }
+    end
+    API-->>FE: final_result { AdvisorResult }
+    API-->>FE: done
+```
+
 ---
 
 ## 📁 Project Structure
@@ -299,6 +368,30 @@ Without a photo, the agent falls back to **text-only aesthetic analysis**, clear
 
 > The advisor projection intentionally excludes the photo to avoid token waste and privacy exposure.
 
+### Vision Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 👤 User
+    participant FE as 🖥️ Frontend
+    participant API as 🌐 Express API
+    participant AE as 🪞 AestheticAgent
+    participant GM as 💬 Gemini (multimodal)
+
+    U->>FE: select photo (PNG/JPEG/WebP ≤5MB)
+    FE->>FE: FileReader → base64 data URI
+    FE->>API: POST /chat/stream { message, image }
+    API->>API: validate ^data:image/(png|jpeg|webp);base64,
+    API-->>FE: 400 if invalid
+    API->>AE: state.image present?
+    AE->>GM: invokeVision(prompt, imageDataUri)<br/>[text + image_url parts]
+    GM-->>AE: AestheticResult (JSON)
+    AE-->>API: aestheticResults
+    API-->>FE: SSE: agent_complete
+    Note over FE: photo NOT passed to advisor projection
+```
+
 ---
 
 ## 📚 RAG Retrieval (Optional)
@@ -308,6 +401,19 @@ The surgeon agent retrieves relevant chunks from a pgvector store seeded from `b
 ```bash
 cd backend
 npm run ingest   # parse data/plastic-guides/ → chunks → pgvector
+```
+
+### RAG Data Flow
+
+```mermaid
+flowchart LR
+    TXT[data/plastic-guides/*.txt<br/># procedure + ## section] -->|npm run ingest| PARSE[parseLabel<br/>chunking]
+    PARSE -->|gemini-embedding-001| EMB[Embeddings]
+    EMB -->|PGVectorStore.addDocuments| DB[(PostgreSQL + pgvector<br/>table: plastic_guides)]
+    DB -->|similaritySearch k=4| RET[searchPlasticGuides]
+    RET -->|has DATABASE_URL| SURG[🏥 SurgeonAgent]
+    SURG -->|no DATABASE_URL| DEGRADE[⚠️ degrade to general LLM guidance]
+    RET -->|context chunks| LLM[Gemini 2.5 flash]
 ```
 
 Deployment details: [docs/rag-deployment-guide.md](./docs/rag-deployment-guide.md)

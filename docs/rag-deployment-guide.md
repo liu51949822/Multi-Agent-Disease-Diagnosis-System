@@ -9,6 +9,31 @@ This guide walks you through enabling the pgvector-backed plastic surgery knowle
 - A PostgreSQL instance (local or hosted) with the **pgvector** extension.
 - The `GOOGLE_API_KEY` set (used for both dialog and embeddings).
 
+## Deployment Overview
+
+```mermaid
+flowchart LR
+    subgraph Setup["Setup (one-time)"]
+        SQL[CREATE EXTENSION vector]
+        TXT[data/plastic-guides/*.txt]
+        ING[npm run ingest]
+    end
+    SQL --> DB[(PostgreSQL + pgvector)]
+    TXT -->|parseLabel chunk| ING -->|gemini-embedding-001| DB
+
+    subgraph Runtime["Runtime"]
+        QUERY[user asks about a procedure]
+        RET[searchPlasticGuides k=4]
+        AGT[SurgeonAgent]
+    end
+    QUERY --> RET --> DB
+    RET --> AGT
+    AGT --> RES[procedures + sources]
+
+    style Setup fill:#EFF6FF,stroke:#2563EB
+    style Runtime fill:#ECFDF5,stroke:#10B981
+```
+
 ## 2. Set up the database
 
 ```sql
