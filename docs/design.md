@@ -8,7 +8,7 @@ A multi-agent AI consultation system for plastic surgery and aesthetic medicine.
 
 ## 2. Goals
 
-1. Preserve the proven LangGraph orchestration + SSE streaming architecture of the reference project.
+1. Preserve the proven LangGraph orchestration + SSE streaming architecture.
 2. Replace the medical domain with a plastic surgery / aesthetic domain across all agents.
 3. Support photo-based consultations (upload a face/body photo + text → visual aesthetic analysis).
 4. Keep the optional pgvector RAG (plastic surgery knowledge base) with safe degradation when no database is configured.
@@ -51,7 +51,7 @@ The coordinator's `plan` (e.g. `['aesthetic','surgeon','risk','care','advisor']`
 
 ## 5. Shared State Types
 
-See `backend/src/agents/types.ts`. Key additions vs the reference project:
+See `backend/src/agents/types.ts`. Key additions:
 
 - `AgentState.image?: string` — photo data URI.
 - `AestheticResult` — `analyzed`, `photoObservations`, `facialAnalysis`, `concerns`, `suggestions`, `confidence`.
