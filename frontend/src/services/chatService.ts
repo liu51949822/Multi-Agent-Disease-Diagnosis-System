@@ -7,17 +7,19 @@ export const chatService = {
    * 流式咨询：POST /chat/stream，通过 SSE 接收执行进度和最终结果。
    * @param message 用户文字
    * @param image 照片 data URI（可选）
+   * @param memory 记忆参数：sessionId/userId/历史对话（可选）
    */
   async streamConsult(
     message: string,
     image: string | undefined,
     onEvent: (event: SseEvent) => void,
     signal?: AbortSignal,
+    memory?: { sessionId?: string; userId?: string; history?: { role: 'user' | 'assistant'; content: string }[] },
   ): Promise<void> {
     const response = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, image }),
+      body: JSON.stringify({ message, image, ...memory }),
       signal,
     });
 

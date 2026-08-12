@@ -129,9 +129,44 @@ flowchart LR
 
 ## 9. API
 
-- `POST /api/chat/stream` — body `{ message, image? }`, SSE events `agent_start` / `agent_complete` / `final_result` / `error` / `done`.
+- `POST /api/chat/stream` — body `{ message, image?, sessionId?, userId?, history? }`, SSE events `agent_start` / `agent_complete` / `final_result` / `error` / `done`.
 - Route validates `image` against `^data:image/(png|jpeg|webp);base64,`.
 - `express.json({ limit: '20mb' })` to accommodate photo payloads.
+- `sessionId` / `userId` / `history` enable the memory system (all optional).
+
+## 9.1 Memory System
+
+The system implements a full memory stack, mirroring LangGraph's official
+Checkpointer (short-term) + Store (long-term/vector) split, all **in-memory**
+so it runs without any database:
+
+| Memory | Module | Purpose |
+|---|---|---|
+| Short-term | `memory/shortTermMemory.ts` | Thread-scoped rolling window + LLM summarization of earlier turns |
+| Long-term | `memory/longTermMemory.ts` | Cross-thread user profile (concerns / past procedures / preferences), file-persisted |
+| Vector | `memory/vectorMemory.ts` | Past QA pairs embedded → cosine similarity recall |
+
+```mermaid
+flowchart LR
+    subgraph Memory["🧠 backend/src/memory"]
+        S["shortTermMemory<br/>summary + window"]
+        L["longTermMemory<br/>user profile"]
+        V["vectorMemory<br/>semantic recall"]
+    end
+    Req["request: sessionId/userId/history"] --> S
+    Req --> L
+    Req --> V
+    S -->|summary + recent| Coordinator["Coordinator / Advisor"]
+    L -->|profileText| Coordinator
+    V -->|relevantHistory| Coordinator
+    style Memory fill:#EEF2FF,stroke:#2563EB
+```
+
+**Design rules:**
+- Client `history` is the **single source of truth** for short-term context; the server only accumulates a summary (incremental, via `messagesSeen`).
+- Memory failures degrade silently and never interrupt the SSE stream.
+- The advisor **memory block is trimmed first** on overflow (low priority); core per-turn results (aesthetic/procedure/risk/care) are never cut.
+- Interfaces mirror LangGraph `Checkpointer`/`Store`; production can swap to `PostgresSaver`/`PostgresStore` without changing agents.
 
 ## 10. Testing Strategy
 
@@ -144,3 +179,4 @@ Vitest mocks the shared model and vector store so tests run offline:
 - `RiskAssessorAgent.test.ts`, `CareAgent.test.ts` — normal + fallback.
 - `AdvisorAgent.test.ts` — single LLM call synthesis incl. multi-result projection.
 - `vectorStore.test.ts` — document mapping + missing `DATABASE_URL` error.
+- `memory.test.ts` — short-term summarization, long-term profile merge, vector recall, facade degradation.

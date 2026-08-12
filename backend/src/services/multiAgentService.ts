@@ -6,6 +6,7 @@ import { SurgeonAgent } from '../agents/SurgeonAgent';
 import { RiskAssessorAgent } from '../agents/RiskAssessorAgent';
 import { CareAgent } from '../agents/CareAgent';
 import { AdvisorAgent } from '../agents/AdvisorAgent';
+import { buildMemoryContext, updateMemory } from '../memory/index';
 import pino from 'pino';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
@@ -13,6 +14,19 @@ const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 const GraphState = Annotation.Root({
   userMessage: Annotation<string>({ default: () => '', reducer: (_, b) => b }),
   image: Annotation<string | undefined>({ default: () => undefined, reducer: (_, b) => b }),
+  // ---- 记忆三件套字段（可选，默认 undefined，既有测试不受影响） ----
+  sessionId: Annotation<string | undefined>({ default: () => undefined, reducer: (_, b) => b }),
+  userId: Annotation<string | undefined>({ default: () => undefined, reducer: (_, b) => b }),
+  summary: Annotation<string | undefined>({ default: () => undefined, reducer: (_, b) => b }),
+  recentHistory: Annotation<AgentState['recentHistory']>({
+    default: () => undefined,
+    reducer: (_, b) => b,
+  }),
+  userProfile: Annotation<string | undefined>({ default: () => undefined, reducer: (_, b) => b }),
+  relevantHistory: Annotation<string | undefined>({
+    default: () => undefined,
+    reducer: (_, b) => b,
+  }),
   coordinatorDecision: Annotation<AgentState['coordinatorDecision']>({
     default: () => undefined,
     reducer: (_, b) => b,
@@ -139,14 +153,40 @@ function summarize(nodeName: string, output: Partial<AgentState>): string {
   }
 }
 
+export interface StreamOptions {
+  sessionId?: string;
+  userId?: string;
+  history?: { role: 'user' | 'assistant'; content: string }[];
+}
+
 export async function executeWithStream(
   userMessage: string,
   image: string | undefined,
   onEvent: (event: SseEvent) => void,
+  options: StreamOptions = {},
 ): Promise<void> {
+  // 请求前：组装记忆三件套上下文（任一层失败静默降级）
+  let memoryContext: Awaited<ReturnType<typeof buildMemoryContext>> | undefined;
+  try {
+    memoryContext = await buildMemoryContext({
+      sessionId: options.sessionId,
+      userId: options.userId,
+      history: options.history,
+      userMessage,
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'build memory context failed, continue without memory');
+  }
+
   const initialState: Partial<GraphStateType> = {
     userMessage,
     image,
+    sessionId: options.sessionId,
+    userId: options.userId,
+    summary: memoryContext?.summary,
+    recentHistory: memoryContext?.recent,
+    userProfile: memoryContext?.profileText || undefined,
+    relevantHistory: memoryContext?.relevantHistoryText || undefined,
     errors: [],
   };
 
@@ -175,6 +215,17 @@ export async function executeWithStream(
 
         if (node === 'advisor' && output.advisorResults) {
           onEvent({ type: 'final_result', data: output.advisorResults });
+          // 请求后：异步更新长期档案 + 向量记忆（失败静默降级，不阻塞）
+          try {
+            await updateMemory({
+              sessionId: options.sessionId,
+              userId: options.userId,
+              userMessage,
+              assistantReply: output.advisorResults.summary,
+            });
+          } catch (err) {
+            logger.error({ error: err }, 'update memory failed');
+          }
         }
       }
     }

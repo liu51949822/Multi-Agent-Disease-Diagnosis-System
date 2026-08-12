@@ -10,7 +10,7 @@ export class CoordinatorAgent extends BaseAgent {
     this.log('开始分析用户问题...');
 
     try {
-      const analysis = await this.analyzeQuestion(state.userMessage);
+      const analysis = await this.analyzeQuestion(state.userMessage, state);
       const plan = this.buildPlan(analysis);
 
       this.log(`分析完成 - 复杂度: ${analysis.complexity}`);
@@ -45,11 +45,14 @@ export class CoordinatorAgent extends BaseAgent {
     }
   }
 
-  private async analyzeQuestion(message: string): Promise<CoordinatorAnalysis> {
+  private async analyzeQuestion(message: string, state: AgentState): Promise<CoordinatorAnalysis> {
+    // 记忆上下文：早期摘要 + 长期用户档案 + 向量相关历史
+    const memory = this.buildMemoryPrompt(state);
+
     const prompt = `你是一个整形美容咨询系统的协调器。请分析以下用户问题，判断需要调用哪些专业模块。
 
 用户问题: ${message}
-
+${memory}
 请分析：
 1. needsAesthetic：用户是否涉及面部/形体美学评估（如对自己外貌不满、想改善五官/轮廓、上传照片要求分析）
 2. needsSurgeon：是否涉及整形手术项目（如双眼皮、隆鼻、抽脂、隆胸、玻尿酸填充、肉毒素注射等具体项目咨询）
@@ -95,5 +98,20 @@ export class CoordinatorAgent extends BaseAgent {
     plan.push('advisor');
 
     return plan;
+  }
+
+  /** 把记忆三件套格式化为协调器的补充上下文（无则返回空串） */
+  private buildMemoryPrompt(state: AgentState): string {
+    const parts: string[] = [];
+    if (state.summary) parts.push(`【此前对话摘要】\n${state.summary}`);
+    if (state.recentHistory?.length) {
+      const recentText = state.recentHistory
+        .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
+        .join('\n');
+      parts.push(`【最近对话】\n${recentText}`);
+    }
+    if (state.userProfile) parts.push(`【用户档案】\n${state.userProfile}`);
+    if (state.relevantHistory) parts.push(`${state.relevantHistory}`);
+    return parts.length ? `\n${parts.join('\n\n')}\n` : '';
   }
 }

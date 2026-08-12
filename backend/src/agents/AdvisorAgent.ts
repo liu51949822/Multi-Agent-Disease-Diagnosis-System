@@ -34,8 +34,23 @@ export class AdvisorAgent extends BaseAgent {
   // 注意:投影绝不含照片 base64,防止 token 浪费与隐私外泄。
   private static readonly MAX_CONTEXT_LEN = 4000;
 
+  // 记忆块与核心结果分离:超长时优先裁剪低优先级的记忆块,
+  // 而不是整体硬截断(否则会从末尾切掉最该保留的本轮分析结果)。
   private buildContext(state: AgentState): string {
-    // 核心信息(必留):用户问题、复杂度、美学分析、项目推荐、风险评估、护理建议
+    // ---- 低优先级:记忆上下文(可裁剪) ----
+    const memoryParts: string[] = [];
+    if (state.summary) memoryParts.push(`【此前对话摘要】\n${state.summary}`);
+    if (state.recentHistory?.length) {
+      memoryParts.push(
+        `【最近对话】\n${state.recentHistory
+          .map((m) => `${m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
+          .join('\n')}`,
+      );
+    }
+    if (state.userProfile) memoryParts.push(`【用户档案】\n${state.userProfile}`);
+    if (state.relevantHistory) memoryParts.push(`${state.relevantHistory}`);
+
+    // ---- 高优先级:本轮核心结果(必留) ----
     let core = `用户问题: ${state.userMessage}\n`;
 
     if (state.coordinatorDecision) {
@@ -78,11 +93,20 @@ export class AdvisorAgent extends BaseAgent {
       if (cr.careTips?.length) core += `\n护理要点: ${cr.careTips.join('; ')}`;
     }
 
-    // 长度守卫:优先保住核心信息,若超长则整体截断并在末尾标注,严禁静默丢弃
-    if (core.length <= AdvisorAgent.MAX_CONTEXT_LEN) return core;
-
-    this.log(`⚠️ Advisor 上下文超长(${core.length}字符),按预算截断`);
-    return core.slice(0, AdvisorAgent.MAX_CONTEXT_LEN) + '\n[部分信息因长度限制已省略]';
+    // ---- 组装 + 长度守卫 ----
+    // 先塞核心结果,再用记忆块填充剩余预算;记忆块超出部分按优先级裁剪,
+    // 核心结果(美学/项目/风险/护理)绝不被截断。
+    let memoryText = memoryParts.join('\n\n');
+    const budget = AdvisorAgent.MAX_CONTEXT_LEN - core.length;
+    if (memoryText.length > budget) {
+      if (budget > 200) {
+        memoryText = memoryText.slice(0, budget) + '\n[部分历史信息因长度限制省略]';
+      } else {
+        memoryText = ''; // 预算几乎耗尽:丢弃记忆块,保住核心结果
+      }
+      this.log('⚠️ Advisor 记忆块超预算,已裁剪(核心结果保留)');
+    }
+    return memoryText ? `${core}\n\n${memoryText}` : core;
   }
 
   private async generateAdvice(state: AgentState): Promise<AdvisorResult> {

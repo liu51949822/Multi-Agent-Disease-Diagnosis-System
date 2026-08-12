@@ -21,10 +21,22 @@ function isValidImageDataUri(value: unknown): value is string {
 /**
  * POST /api/chat/stream
  * 多智能体流式咨询接口，通过 SSE 推送执行进度和最终结果。
- * 请求体: { message: string, image?: string }（image 为照片 data URI，可选）
+ * 请求体: {
+ *   message: string,            // 用户消息（必填）
+ *   image?: string,             // 照片 data URI（可选）
+ *   sessionId?: string,         // 会话 id（短期记忆，可选）
+ *   userId?: string,            // 用户 id（长期档案/向量记忆，可选）
+ *   history?: {role,content}[]  // 历史对话（短期记忆事实来源，可选）
+ * }
  */
 router.post('/chat/stream', async (req: Request, res: Response) => {
-  const { message, image } = req.body as { message?: string; image?: unknown };
+  const { message, image, sessionId, userId, history } = req.body as {
+    message?: string;
+    image?: unknown;
+    sessionId?: string;
+    userId?: string;
+    history?: { role: 'user' | 'assistant'; content: string }[];
+  };
 
   if (!message || typeof message !== 'string' || message.trim() === '') {
     res.status(400).json({ error: '消息内容不能为空' });
@@ -62,7 +74,12 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     }
   };
 
-  await executeWithStream(message.trim(), image as string | undefined, send);
+  await executeWithStream(
+    message.trim(),
+    image as string | undefined,
+    send,
+    { sessionId: sessionId as string | undefined, userId: userId as string | undefined, history },
+  );
   if (!closed) res.end();
 });
 

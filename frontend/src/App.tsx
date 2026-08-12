@@ -189,6 +189,17 @@ export default function App() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 记忆参数：sessionId/userId 由前端生成并存 localStorage（无鉴权，演示用）
+  const [sessionId] = useState(() => localStorage.getItem('wa-session') ?? (() => {
+    const id = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem('wa-session', id);
+    return id;
+  })());
+  const [userId] = useState(() => localStorage.getItem('wa-user') ?? (() => {
+    const id = `user-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem('wa-user', id);
+    return id;
+  })());
 
   useEffect(() => {
     chatService.checkHealth()
@@ -241,6 +252,11 @@ export default function App() {
     abortRef.current = new AbortController();
 
     try {
+      // 历史对话作为短期记忆的事实来源传给后端（只取 role + content 精简字段）
+      const history = messages
+        .filter(m => m.content && !m.streaming)
+        .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content as string }));
+
       await chatService.streamConsult(
         userMsg.content ?? '',
         image,
@@ -274,6 +290,7 @@ export default function App() {
           }
         },
         abortRef.current.signal,
+        { sessionId, userId, history },
       );
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== 'AbortError') {

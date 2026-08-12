@@ -432,6 +432,25 @@ Tests mock the shared model (`vi.spyOn(sharedModel, 'invoke')`) and the vector s
 
 ---
 
+## 🧠 Memory System
+
+The system implements a **full memory stack** (mapped to LangGraph's official Checkpointer + Store patterns) so users can hold multi-turn, cross-session consultations:
+
+| Memory type | Purpose | Implementation |
+|---|---|---|
+| **Short-term (thread)** | Multi-turn context within a session | Rolling window (last N messages as source of truth) + **LLM summarization** of earlier turns (`memory/shortTermMemory.ts`) |
+| **Long-term (cross-thread)** | Persistent user profile across sessions | Structured profile (concerns / past procedures / preferences) extracted from conversation and persisted to disk (`memory/longTermMemory.ts`) |
+| **Vector / semantic** | Recall semantically related past conversations | History QA pairs embedded with `gemini-embedding-001` → cosine similarity search (`memory/vectorMemory.ts`) |
+
+**Design highlights:**
+
+- All in-memory by default → **runs without any database**; the interfaces mirror LangGraph's `Checkpointer` + `Store`, so swapping to `PostgresSaver`/`PostgresStore` is a drop-in change.
+- The **client `history` is the single source of truth** for short-term context; the server only accumulates summaries (no double-write conflicts).
+- Memory failures **degrade silently** — they never interrupt the SSE stream.
+- The coordinator and advisor inject `summary + userProfile + relevantHistory` into their prompts; the base64 photo is still **never** projected.
+
+Request body additions: `sessionId`, `userId`, `history` (all optional). The frontend auto-generates and persists `sessionId`/`userId` in localStorage.
+
 ## 💡 Design Notes
 
 **Why multi-agent?** Division of labor keeps each agent focused on one domain and easy to maintain. The coordinator only invokes the experts the request needs, balancing quality and cost. Adding a capability is as simple as adding an agent.
@@ -446,7 +465,10 @@ Tests mock the shared model (`vi.spyOn(sharedModel, 'invoke')`) and the vector s
 
 ## 🗺️ Roadmap
 
-- [ ] Multi-turn conversation memory (session history with rolling summaries)
+- [x] Multi-turn conversation memory (short-term summarization)
+- [x] Long-term user profile (cross-session)
+- [x] Vector / semantic recall of past conversations
+- [ ] Backend persistence via PostgresSaver / PostgresStore (currently in-memory)
 - [ ] Chat history persistence
 - [ ] User authentication & profiles
 - [ ] Retrieval caching & performance monitoring

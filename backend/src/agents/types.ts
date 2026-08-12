@@ -76,6 +76,13 @@ export interface RecommendedProcedure {
 export interface AgentState {
   userMessage: string;
   image?: string; // data URI（照片，可选）
+  // ---- 记忆三件套（由 memory 门面注入，均可选） ----
+  sessionId?: string; // 会话 id（thread 级短期记忆）
+  userId?: string; // 用户 id（跨会话长期记忆/向量记忆）
+  summary?: string; // 早期对话摘要（短期记忆）
+  recentHistory?: { role: 'user' | 'assistant'; content: string }[]; // 最近对话窗口
+  userProfile?: string; // 长期用户档案文本
+  relevantHistory?: string; // 向量检索到的相关历史文本
   coordinatorDecision?: CoordinatorDecision;
   aestheticResults?: AestheticResult;
   surgeonResults?: SurgeonResult;
